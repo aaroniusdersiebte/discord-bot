@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Bingo Manager</title>
+    <link rel="stylesheet" href="styles-v2.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>Stream Bingo Manager</h1>
+            <div class="status-indicators">
+                <div class="status-item">
+                    <span class="status-label">Discord Bot:</span>
+                    <span id="bot-status" class="status-indicator offline">Offline</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">OBS Server:</span>
+                    <span id="obs-status" class="status-indicator online">Online</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="app-nav">
+            <button class="nav-item active" data-tab="decks">Bingo Decks</button>
+            <button class="nav-item" data-tab="events">Events</button>
+            <button class="nav-item" data-tab="wins">Bingo Wins</button>
+            <button class="nav-item" data-tab="settings">Einstellungen</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="app-main">
+            
+            <!-- Bingo Decks Tab -->
+            <div id="decks-tab" class="tab-content active">
+                <div class="tab-header">
+                    <h2>Bingo Decks verwalten</h2>
+                    <button id="create-deck-btn" class="btn btn-primary">Neues Deck erstellen</button>
+                </div>
+
+                <div class="deck-list" id="deck-list">
+                    <!-- Decks will be loaded here -->
+                </div>
+
+                <!-- Create/Edit Deck Modal -->
+                <div id="deck-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 id="deck-modal-title">Neues Bingo Deck</h3>
+                            <button class="modal-close">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="deck-name">Deck Name:</label>
+                                <input type="text" id="deck-name" placeholder="z.B. Horror Games Bingo">
+                            </div>
+                            <div class="form-group">
+                                <label for="deck-description">Beschreibung:</label>
+                                <textarea id="deck-description" placeholder="Beschreibung des Bingo Decks..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="deck-events">Events (durch Komma getrennt):</label>
+                                <textarea id="deck-events" placeholder="Streamer stirbt, Jump Scare, Rage Quit, Chat spammt Emotes, Streamer flucht, Game crasht, Lag Spike, ..." rows="8"></textarea>
+                                <small>Jedes Event in einer neuen Zeile oder durch Komma getrennt</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="deck-color">Deck Farbe:</label>
+                                <input type="color" id="deck-color" value="#6366f1">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="cancel-deck" class="btn btn-secondary">Abbrechen</button>
+                            <button id="save-deck" class="btn btn-primary">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Events Tab -->
+            <div id="events-tab" class="tab-content">
+                <div class="tab-header">
+                    <h2>Ausstehende Events</h2>
+                    <div class="info-box">
+                        <p>Hier siehst du alle Events, die von Zuschauern als "eingetreten" markiert wurden und auf deine Bestätigung warten.</p>
+                    </div>
+                </div>
+
+                <div class="events-container" id="events-container">
+                    <!-- Events will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Bingo Wins Tab -->
+            <div id="wins-tab" class="tab-content">
+                <div class="tab-header">
+                    <h2>Bingo Gewinne</h2>
+                    <div class="info-box">
+                        <p>Übersicht aller Zuschauer, die ein Bingo erreicht haben und auf Punktevergabe warten.</p>
+                    </div>
+                </div>
+
+                <div class="wins-container" id="wins-container">
+                    <!-- Wins will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings-tab" class="tab-content">
+                <div class="tab-header">
+                    <h2>Einstellungen</h2>
+                </div>
+
+                <div class="settings-container">
+                    <!-- Discord Bot Settings -->
+                    <div class="settings-section">
+                        <h3>Discord Bot</h3>
+                        <div class="form-group">
+                            <label for="bot-token">Bot Token:</label>
+                            <input type="password" id="bot-token" placeholder="Discord Bot Token eingeben...">
+                        </div>
+                        <div class="form-group">
+                            <label for="guild-id">Server ID:</label>
+                            <input type="text" id="guild-id" placeholder="Discord Server ID">
+                        </div>
+                        <div class="form-group">
+                            <label for="bingo-channel">Bingo Channel ID:</label>
+                            <input type="text" id="bingo-channel" placeholder="Channel ID für Bingo Commands">
+                        </div>
+                        <div class="bot-controls">
+                            <button id="start-bot" class="btn btn-success">Bot starten</button>
+                            <button id="stop-bot" class="btn btn-danger">Bot stoppen</button>
+                        </div>
+                    </div>
+
+                    <!-- Bingo Settings -->
+                    <div class="settings-section">
+                        <h3>Bingo Einstellungen</h3>
+                        <div class="form-group">
+                            <label for="bingo-size">Bingo Kartengröße:</label>
+                            <select id="bingo-size">
+                                <option value="3">3x3</option>
+                                <option value="4">4x4</option>
+                                <option value="5" selected>5x5</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="points-first">Punkte für 1. Platz:</label>
+                            <input type="number" id="points-first" value="100" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="points-second">Punkte für 2. Platz:</label>
+                            <input type="number" id="points-second" value="75" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="points-third">Punkte für 3. Platz:</label>
+                            <input type="number" id="points-third" value="50" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="points-fourth">Punkte für 4. Platz:</label>
+                            <input type="number" id="points-fourth" value="25" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="points-fifth">Punkte für 5. Platz:</label>
+                            <input type="number" id="points-fifth" value="10" min="1">
+                        </div>
+                    </div>
+
+                    <!-- OBS Integration -->
+                    <div class="settings-section">
+                        <h3>OBS Integration</h3>
+                        <div class="form-group">
+                            <label for="obs-port">OBS Server Port:</label>
+                            <input type="number" id="obs-port" value="3000" min="1000" max="65535">
+                        </div>
+                        <div class="obs-url-display">
+                            <label>Browser Source URL:</label>
+                            <div class="url-copy-container">
+                                <input type="text" id="obs-url" readonly>
+                                <button id="copy-obs-url" class="btn btn-secondary">Kopieren</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button id="save-settings" class="btn btn-primary">Einstellungen speichern</button>
+                        <button id="reset-settings" class="btn btn-secondary">Zurücksetzen</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p>Lade...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="script.js"></script>
+</body>
+</html>

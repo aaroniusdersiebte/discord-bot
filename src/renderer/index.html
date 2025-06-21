@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Bingo Bot - Management</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <h1><i class="fas fa-dice"></i> Stream Bingo Bot</h1>
+                <span class="version">v2.0.0</span>
+            </div>
+            <div class="header-right">
+                <div class="bot-status" id="botStatus">
+                    <span class="status-dot offline"></span>
+                    <span class="status-text">Offline</span>
+                </div>
+                <button class="btn btn-primary" id="toggleBot">
+                    <i class="fas fa-play"></i> Bot starten
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="app-nav">
+            <button class="nav-btn active" data-section="dashboard">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </button>
+            <button class="nav-btn" data-section="workflow">
+                <i class="fas fa-project-diagram"></i> Bot Workflows
+            </button>
+            <button class="nav-btn" data-section="decks">
+                <i class="fas fa-layer-group"></i> Bingo Decks
+            </button>
+            <button class="nav-btn" data-section="events">
+                <i class="fas fa-bell"></i> Events & Gewinne
+            </button>
+            <button class="nav-btn" data-section="settings">
+                <i class="fas fa-cog"></i> Einstellungen
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="app-main">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section active">
+                <div class="section-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+                    <p>Überblick über dein Stream Bingo System</p>
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- Quick Stats -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> Statistiken</h3>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-number" id="totalPlayers">0</span>
+                                <span class="stat-label">Aktive Spieler</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number" id="totalGames">0</span>
+                                <span class="stat-label">Gespielte Runden</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number" id="activeDecks">0</span>
+                                <span class="stat-label">Verfügbare Decks</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number" id="pendingEvents">0</span>
+                                <span class="stat-label">Wartende Events</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bot Configuration Quick View -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-robot"></i> Bot Status</h3>
+                        </div>
+                        <div class="bot-info">
+                            <div class="info-row">
+                                <span class="info-label">Discord Token:</span>
+                                <span class="info-value" id="tokenStatus">Nicht konfiguriert</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Server ID:</span>
+                                <span class="info-value" id="guildStatus">Nicht konfiguriert</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Aktives Deck:</span>
+                                <span class="info-value" id="activeDeckName">Keins ausgewählt</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Slash Commands:</span>
+                                <span class="info-value" id="slashCommandsStatus">Aktiviert</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OBS Integration -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-video"></i> OBS Integration</h3>
+                        </div>
+                        <div class="obs-controls">
+                            <div class="info-row">
+                                <span class="info-label">Browser Source URL:</span>
+                                <div class="url-display">
+                                    <input type="text" id="obsUrl" readonly value="http://localhost:3000">
+                                    <button class="btn btn-small" onclick="copyToClipboard('obsUrl')">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="obs-status">
+                                <span class="status-indicator active"></span>
+                                <span>Server läuft auf Port 3000</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="dashboard-card full-width">
+                        <div class="card-header">
+                            <h3><i class="fas fa-history"></i> Letzte Aktivitäten</h3>
+                        </div>
+                        <div class="activity-list" id="recentActivity">
+                            <div class="activity-item">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Bot gestartet und bereit für Commands</span>
+                                <time>vor 2 Minuten</time>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workflow Section -->
+            <section id="workflow" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-project-diagram"></i> Bot Workflows</h2>
+                    <p>Konfiguriere das Verhalten und die Nachrichten deines Bots</p>
+                </div>
+
+                <div class="workflow-container">
+                    <div class="workflow-sidebar">
+                        <h3>Workflows</h3>
+                        <div class="workflow-list">
+                            <div class="workflow-item active" data-workflow="bingo-card">
+                                <i class="fas fa-dice"></i>
+                                <span>Bingo Karte erstellen</span>
+                            </div>
+                            <div class="workflow-item" data-workflow="bingo-win">
+                                <i class="fas fa-trophy"></i>
+                                <span>Bingo Gewinn</span>
+                            </div>
+                            <div class="workflow-item" data-workflow="event-confirm">
+                                <i class="fas fa-check"></i>
+                                <span>Event bestätigen</span>
+                            </div>
+                            <div class="workflow-item" data-workflow="help-command">
+                                <i class="fas fa-question-circle"></i>
+                                <span>Hilfe anzeigen</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline" id="addWorkflow">
+                            <i class="fas fa-plus"></i> Neuer Workflow
+                        </button>
+                    </div>
+
+                    <div class="workflow-editor">
+                        <div class="workflow-header">
+                            <h3 id="workflowTitle">Bingo Karte erstellen</h3>
+                            <div class="workflow-actions">
+                                <button class="btn btn-small btn-outline">
+                                    <i class="fas fa-eye"></i> Vorschau
+                                </button>
+                                <button class="btn btn-small btn-primary" id="saveWorkflow">
+                                    <i class="fas fa-save"></i> Speichern
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="workflow-steps" id="workflowSteps">
+                            <!-- Dynamic workflow steps will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Decks Section -->
+            <section id="decks" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-layer-group"></i> Bingo Decks verwalten</h2>
+                    <button class="btn btn-primary" id="addDeck">
+                        <i class="fas fa-plus"></i> Neues Deck
+                    </button>
+                </div>
+
+                <div class="decks-grid" id="decksGrid">
+                    <!-- Decks will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Events Section -->
+            <section id="events" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-bell"></i> Events & Gewinne verwalten</h2>
+                </div>
+
+                <div class="events-tabs">
+                    <button class="tab-btn active" data-tab="pending">
+                        Wartende Events <span class="badge" id="pendingCount">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="wins">
+                        Bingo Gewinne <span class="badge" id="winsCount">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="leaderboard">
+                        Bestenliste
+                    </button>
+                </div>
+
+                <div class="events-content">
+                    <div id="pending" class="tab-content active">
+                        <div class="events-list" id="pendingEventsList">
+                            <!-- Pending events will be loaded here -->
+                        </div>
+                    </div>
+
+                    <div id="wins" class="tab-content">
+                        <div class="wins-list" id="winsList">
+                            <!-- Wins will be loaded here -->
+                        </div>
+                    </div>
+
+                    <div id="leaderboard" class="tab-content">
+                        <div class="leaderboard" id="leaderboardContent">
+                            <!-- Leaderboard will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings" class="section">
+                <div class="section-header">
+                    <h2><i class="fas fa-cog"></i> Einstellungen</h2>
+                    <p>Konfiguriere deinen Discord Bot und weitere Optionen</p>
+                </div>
+
+                <div class="settings-container">
+                    <div class="settings-group">
+                        <h3><i class="fas fa-robot"></i> Discord Bot Konfiguration</h3>
+                        <div class="form-group">
+                            <label for="discordToken">Discord Bot Token</label>
+                            <div class="input-with-button">
+                                <input type="password" id="discordToken" placeholder="Bot Token eingeben...">
+                                <button class="btn btn-small" onclick="togglePassword('discordToken')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <small>Erstelle einen Bot auf <a href="https://discord.com/developers/applications" target="_blank">Discord Developer Portal</a></small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="guildId">Discord Server ID</label>
+                            <input type="text" id="guildId" placeholder="Server ID eingeben...">
+                            <small>Rechtsklick auf deinen Server → "ID kopieren" (Developer Mode erforderlich)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="bingoChannelId">Bingo Channel ID (Optional)</label>
+                            <input type="text" id="bingoChannelId" placeholder="Channel ID eingeben...">
+                            <small>Leer lassen für alle Channels</small>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3><i class="fas fa-gamepad"></i> Bingo Einstellungen</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bingoSize">Bingo Kartengröße</label>
+                                <select id="bingoSize">
+                                    <option value="3">3x3</option>
+                                    <option value="5" selected>5x5</option>
+                                    <option value="7">7x7</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="maxPlayers">Max. Spieler pro Runde</label>
+                                <input type="number" id="maxPlayers" value="100" min="1" max="1000">
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableReactions" checked>
+                                <span class="checkmark"></span>
+                                Event-Reaktionen aktivieren
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableDMs" checked>
+                                <span class="checkmark"></span>
+                                DM-Benachrichtigungen senden
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableSlashCommands" checked>
+                                <span class="checkmark"></span>
+                                Slash Commands verwenden
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <h3><i class="fas fa-trophy"></i> Punkte System</h3>
+                        <div class="points-grid">
+                            <div class="form-group">
+                                <label>1. Platz</label>
+                                <input type="number" id="points1st" value="100">
+                            </div>
+                            <div class="form-group">
+                                <label>2. Platz</label>
+                                <input type="number" id="points2nd" value="75">
+                            </div>
+                            <div class="form-group">
+                                <label>3. Platz</label>
+                                <input type="number" id="points3rd" value="50">
+                            </div>
+                            <div class="form-group">
+                                <label>4. Platz</label>
+                                <input type="number" id="points4th" value="25">
+                            </div>
+                            <div class="form-group">
+                                <label>5. Platz</label>
+                                <input type="number" id="points5th" value="10">
+                            </div>
+                            <div class="form-group">
+                                <label>Teilnahme</label>
+                                <input type="number" id="pointsParticipation" value="5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button class="btn btn-primary" id="saveSettings">
+                            <i class="fas fa-save"></i> Einstellungen speichern
+                        </button>
+                        <button class="btn btn-outline" id="exportSettings">
+                            <i class="fas fa-download"></i> Exportieren
+                        </button>
+                        <button class="btn btn-outline" id="importSettings">
+                            <i class="fas fa-upload"></i> Importieren
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="deckModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="deckModalTitle">Neues Bingo Deck</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Deck editor content -->
+            </div>
+        </div>
+    </div>
+
+    <div id="workflowModal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3>Workflow bearbeiten</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Workflow editor content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+{
+  "name": "stream-bingo-v2",
+  "version": "2.0.0",
+  "description": "Stream Bingo System mit erweiterten Discord Bot Features und Workflow-Editor",
+  "main": "src/main/main-v2.js",
+  "scripts": {
+    "start": "electron .",
+    "start-old": "electron src/main/main.js",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "clean": "rimraf node_modules package-lock.json && npm install",
+    "setup": "node scripts/setup.js"
+  },
+  "keywords": [
+    "stream", 
+    "bingo", 
+    "discord", 
+    "obs", 
+    "slash-commands", 
+    "workflow", 
+    "streaming", 
+    "twitch", 
+    "youtube"
+  ],
+  "author": "Streamer",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "rimraf": "^5.0.5"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "build": {
+    "appId": "com.streamer.bingo-v2",
+    "productName": "Stream Bingo Bot V2",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*", 
+      "obs/**/*",
+      "node_modules/**/*",
+      "config.example.json",
+      ".env.example"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg", 
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "electronVersion": "27.0.0"
+}

@@ -1,0 +1,61 @@
+{
+  "APP_NAME": "Stream Bingo Bot",
+  "APP_VERSION": "2.0.0",
+  "NODE_ENV": "production",
+  "OBS_SERVER_PORT": "3000",
+  "DATA_PATH": "./data",
+  "BACKUP_PATH": "./backups",
+  "LOG_LEVEL": "info",
+  "LOG_FILE": "./logs/app.log",
+  "ENABLE_AUTOCOMPLETE": "true",
+  "ENABLE_SLASH_COMMANDS": "true",
+  "ENABLE_WORKFLOW_EDITOR": "true",
+  "ENABLE_AUTO_BACKUP": "true",
+  "BOT_SETTINGS": {
+    "bingoSize": 5,
+    "maxPlayersPerGame": 100,
+    "autoConfirmDelay": 0,
+    "enableEventReactions": true,
+    "enableDMNotifications": true,
+    "commandPrefix": "/",
+    "messages": {
+      "bingoCardGenerated": {
+        "title": "🎯 Deine Bingo Karte ist bereit!",
+        "description": "Reagiere mit ✅ auf Events wenn sie passieren",
+        "color": "#6366f1"
+      },
+      "bingoAchieved": {
+        "title": "🎉 BINGO! 🎉",
+        "description": "Herzlichen Glückwunsch! Du hast ein Bingo erreicht!",
+        "color": "#FFD700"
+      },
+      "eventConfirmed": {
+        "title": "✅ Event bestätigt",
+        "description": "Das Event wurde vom Streamer bestätigt",
+        "color": "#22c55e"
+      },
+      "winConfirmed": {
+        "title": "🏆 Gewinn bestätigt!",
+        "description": "Deine Punkte wurden vergeben",
+        "color": "#FFD700"
+      },
+      "errors": {
+        "noDeck": "❌ Kein aktives Bingo Deck verfügbar",
+        "alreadyHasCard": "🎯 Du hast bereits eine aktive Bingo Karte",
+        "invalidCommand": "❌ Unbekannter Befehl. Verwende /help für Hilfe",
+        "bingoGenerationFailed": "❌ Fehler beim Erstellen der Bingo Karte"
+      }
+    }
+  },
+  "POINTS_SYSTEM": {
+    "positions": {
+      "1": 100,
+      "2": 75,
+      "3": 50,
+      "4": 25,
+      "5": 10
+    },
+    "participation": 5,
+    "bonusMultiplier": 1.5
+  }
+}
