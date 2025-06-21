@@ -173,11 +173,15 @@ class StreamBingoAppV2 {
         });
 
         ipcMain.handle('get-bot-status-v2', () => {
-            return {
+            const botStatus = {
                 isRunning: this.discordBot && this.discordBot.isReady,
                 connectedGuilds: this.discordBot ? this.discordBot.getConnectedGuilds() : [],
-                userCount: this.discordBot ? this.discordBot.userBingos.size : 0
+                userCount: this.discordBot ? this.discordBot.userBingos.size : 0,
+                canvasAvailable: this.bingoGenerator ? this.bingoGenerator.canvasAvailable : false,
+                canvasError: this.bingoGenerator ? this.bingoGenerator.canvasError : null
             };
+            console.log(`📊 Bot Status: Running=${botStatus.isRunning}, Users=${botStatus.userCount}, Canvas=${botStatus.canvasAvailable}`);
+            return botStatus;
         });
 
         // Data Management (Enhanced)
