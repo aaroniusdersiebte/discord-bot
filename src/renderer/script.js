@@ -8,6 +8,8 @@ class StreamBingoUI {
         this.config = {};
         this.workflows = {};
         this.currentWorkflow = 'bingo-card';
+        this.currentEvents = [];
+        this.currentEditingDeck = null;
         
         this.init();
     }
@@ -620,17 +622,357 @@ class StreamBingoUI {
         }
     }
 
-    // Placeholder methods for future implementation
+    // Deck Management Implementation
     async loadDecks() {
-        // Implementation for loading decks
+        try {
+            const response = await ipcRenderer.invoke('load-bingo-decks');
+            if (response.success) {
+                this.renderDecks(response.decks);
+            } else {
+                this.showNotification('Fehler beim Laden der Decks', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading decks:', error);
+            this.showNotification('Fehler beim Laden der Decks', 'error');
+        }
+    }
+
+    renderDecks(decks) {
+        const decksGrid = document.getElementById('decksGrid');
+        if (!decksGrid) return;
+
+        if (decks.length === 0) {
+            decksGrid.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-layer-group"></i>
+                    <h3>Keine Decks vorhanden</h3>
+                    <p>Erstelle dein erstes Bingo Deck um anzufangen!</p>
+                    <button class="btn btn-primary" onclick="streamBingoUI.openDeckModal()">
+                        <i class="fas fa-plus"></i> Erstes Deck erstellen
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        decksGrid.innerHTML = decks.map(deck => `
+            <div class="deck-card ${deck.isActive ? 'active' : ''}" data-deck-id="${deck.id}">
+                <div class="deck-header">
+                    <h3>${deck.name}</h3>
+                    <div class="deck-type">
+                        <span class="deck-type-badge ${deck.type || 'normal'}">
+                            ${deck.type === 'addon' ? 'Zusatz-Deck' : 'Haupt-Deck'}
+                        </span>
+                    </div>
+                </div>
+                <div class="deck-stats">
+                    <div class="stat">
+                        <i class="fas fa-list"></i>
+                        <span>${deck.events?.length || 0} Events</span>
+                    </div>
+                    <div class="stat">
+                        <i class="fas fa-calendar"></i>
+                        <span>${new Date(deck.lastModified || deck.created).toLocaleDateString()}</span>
+                    </div>
+                </div>
+                <div class="deck-description">
+                    <p>${deck.description || 'Keine Beschreibung'}</p>
+                </div>
+                <div class="deck-actions">
+                    <button class="btn btn-small btn-outline" onclick="streamBingoUI.editDeck('${deck.id}')">
+                        <i class="fas fa-edit"></i> Bearbeiten
+                    </button>
+                    <button class="btn btn-small ${deck.isActive ? 'btn-success' : 'btn-primary'}" 
+                            onclick="streamBingoUI.toggleDeckActive('${deck.id}')">
+                        <i class="fas fa-${deck.isActive ? 'check' : 'play'}"></i> 
+                        ${deck.isActive ? 'Aktiv' : 'Aktivieren'}
+                    </button>
+                    <button class="btn btn-small btn-danger" onclick="streamBingoUI.deleteDeck('${deck.id}')">
+                        <i class="fas fa-trash"></i> Löschen
+                    </button>
+                </div>
+            </div>
+        `).join('');
     }
 
     async loadEvents() {
         // Implementation for loading events
+        await this.refreshPendingEvents();
+        await this.refreshWinsList();
+        await this.refreshLeaderboard();
     }
 
-    openDeckModal() {
+    openDeckModal(deckId = null) {
+        this.currentEditingDeck = deckId;
+        this.renderDeckModal(deckId);
         this.openModal('deckModal');
+    }
+
+    async renderDeckModal(deckId = null) {
+        const modal = document.getElementById('deckModal');
+        const modalBody = modal.querySelector('.modal-body');
+        const modalTitle = modal.querySelector('#deckModalTitle');
+        
+        let deck = null;
+        if (deckId) {
+            const response = await ipcRenderer.invoke('get-deck', deckId);
+            if (response.success) {
+                deck = response.deck;
+            }
+        }
+
+        modalTitle.textContent = deck ? 'Deck bearbeiten' : 'Neues Deck erstellen';
+        
+        modalBody.innerHTML = `
+            <form id="deckForm">
+                <div class="form-group">
+                    <label for="deckName">Deck Name *</label>
+                    <input type="text" id="deckName" class="form-control" 
+                           value="${deck?.name || ''}" placeholder="z.B. Minecraft Events" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="deckDescription">Beschreibung</label>
+                    <textarea id="deckDescription" class="form-control" rows="3" 
+                              placeholder="Beschreibe worum es in diesem Deck geht...">${deck?.description || ''}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="deckType">Deck Typ</label>
+                    <select id="deckType" class="form-control">
+                        <option value="normal" ${(deck?.type || 'normal') === 'normal' ? 'selected' : ''}>
+                            Haupt-Deck (nur eins kann aktiv sein)
+                        </option>
+                        <option value="addon" ${deck?.type === 'addon' ? 'selected' : ''}>
+                            Zusatz-Deck (mehrere können aktiv sein)
+                        </option>
+                    </select>
+                    <small>Zusatz-Decks enthalten Events, die stream-übergreifend passieren können</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Events verwalten</label>
+                    <div class="events-section">
+                        <div class="events-input-area">
+                            <div class="input-with-button">
+                                <input type="text" id="eventInput" class="form-control" 
+                                       placeholder="Neues Bingo Event eingeben...">
+                                <button type="button" class="btn btn-primary" onclick="streamBingoUI.addEvent()">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="events-view-toggle">
+                            <button type="button" class="btn btn-small btn-outline view-toggle active" 
+                                    data-view="list" onclick="streamBingoUI.toggleEventsView('list')">
+                                <i class="fas fa-list"></i> Listen-Ansicht
+                            </button>
+                            <button type="button" class="btn btn-small btn-outline view-toggle" 
+                                    data-view="text" onclick="streamBingoUI.toggleEventsView('text')">
+                                <i class="fas fa-align-left"></i> Text-Ansicht
+                            </button>
+                        </div>
+                        
+                        <div id="eventsListView" class="events-display">
+                            <ul id="eventsList" class="events-list">
+                                <!-- Events will be populated here -->
+                            </ul>
+                        </div>
+                        
+                        <div id="eventsTextView" class="events-display" style="display: none;">
+                            <textarea id="eventsTextArea" class="form-control" rows="10" 
+                                      placeholder="Events mit Komma getrennt..." 
+                                      onchange="streamBingoUI.syncEventsFromText()"></textarea>
+                            <small>Events sind mit Kommas getrennt. Du kannst hier Text-Blöcke einfügen.</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="streamBingoUI.closeModal('deckModal')">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> ${deck ? 'Speichern' : 'Erstellen'}
+                    </button>
+                </div>
+            </form>
+        `;
+        
+        // Populate events if editing
+        if (deck && deck.events) {
+            this.currentEvents = [...deck.events];
+            this.renderEventsList();
+            this.syncEventsToText();
+        } else {
+            this.currentEvents = [];
+        }
+        
+        // Setup form submission
+        document.getElementById('deckForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveDeck();
+        });
+        
+        // Setup enter key for event input
+        document.getElementById('eventInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.addEvent();
+            }
+        });
+    }
+
+    addEvent() {
+        const input = document.getElementById('eventInput');
+        const eventText = input.value.trim();
+        
+        if (eventText && !this.currentEvents.includes(eventText)) {
+            this.currentEvents.push(eventText);
+            this.renderEventsList();
+            this.syncEventsToText();
+            input.value = '';
+            input.focus(); // Keep focus for quick adding
+        }
+    }
+    
+    removeEvent(index) {
+        this.currentEvents.splice(index, 1);
+        this.renderEventsList();
+        this.syncEventsToText();
+    }
+    
+    renderEventsList() {
+        const eventsList = document.getElementById('eventsList');
+        if (!eventsList) return;
+        
+        eventsList.innerHTML = this.currentEvents.map((event, index) => `
+            <li class="event-item">
+                <span class="event-text">${event}</span>
+                <button type="button" class="btn btn-small btn-danger" 
+                        onclick="streamBingoUI.removeEvent(${index})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </li>
+        `).join('');
+    }
+    
+    toggleEventsView(view) {
+        const listView = document.getElementById('eventsListView');
+        const textView = document.getElementById('eventsTextView');
+        const toggleButtons = document.querySelectorAll('.view-toggle');
+        
+        toggleButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === view);
+        });
+        
+        if (view === 'list') {
+            listView.style.display = 'block';
+            textView.style.display = 'none';
+        } else {
+            listView.style.display = 'none';
+            textView.style.display = 'block';
+            this.syncEventsToText();
+        }
+    }
+    
+    syncEventsToText() {
+        const textArea = document.getElementById('eventsTextArea');
+        if (textArea) {
+            textArea.value = this.currentEvents.join(', ');
+        }
+    }
+    
+    syncEventsFromText() {
+        const textArea = document.getElementById('eventsTextArea');
+        if (textArea) {
+            const events = textArea.value
+                .split(',')
+                .map(event => event.trim())
+                .filter(event => event.length > 0);
+            
+            this.currentEvents = [...new Set(events)]; // Remove duplicates
+            this.renderEventsList();
+        }
+    }
+    
+    async saveDeck() {
+        const form = document.getElementById('deckForm');
+        const formData = new FormData(form);
+        
+        const deckData = {
+            id: this.currentEditingDeck || this.generateDeckId(),
+            name: document.getElementById('deckName').value.trim(),
+            description: document.getElementById('deckDescription').value.trim(),
+            type: document.getElementById('deckType').value,
+            events: [...this.currentEvents],
+            created: this.currentEditingDeck ? undefined : new Date().toISOString(),
+            lastModified: new Date().toISOString()
+        };
+        
+        if (!deckData.name) {
+            this.showNotification('Deck Name ist erforderlich', 'error');
+            return;
+        }
+        
+        if (deckData.events.length === 0) {
+            this.showNotification('Mindestens ein Event ist erforderlich', 'error');
+            return;
+        }
+        
+        try {
+            const result = await ipcRenderer.invoke('save-bingo-deck', deckData);
+            if (result.success) {
+                this.showNotification(`Deck ${this.currentEditingDeck ? 'aktualisiert' : 'erstellt'}!`, 'success');
+                this.closeModal('deckModal');
+                await this.loadDecks();
+            } else {
+                this.showNotification(`Fehler: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.showNotification(`Fehler: ${error.message}`, 'error');
+        }
+    }
+    
+    generateDeckId() {
+        return `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    async editDeck(deckId) {
+        this.openDeckModal(deckId);
+    }
+    
+    async toggleDeckActive(deckId) {
+        try {
+            const result = await ipcRenderer.invoke('set-active-deck', deckId);
+            if (result.success) {
+                this.showNotification('Deck-Status aktualisiert!', 'success');
+                await this.loadDecks();
+                await this.loadDashboard(); // Refresh dashboard stats
+            } else {
+                this.showNotification(`Fehler: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.showNotification(`Fehler: ${error.message}`, 'error');
+        }
+    }
+    
+    async deleteDeck(deckId) {
+        if (confirm('Bist du sicher, dass du dieses Deck löschen möchtest?')) {
+            try {
+                const result = await ipcRenderer.invoke('delete-bingo-deck', deckId);
+                if (result.success) {
+                    this.showNotification('Deck gelöscht!', 'success');
+                    await this.loadDecks();
+                    await this.loadDashboard();
+                } else {
+                    this.showNotification(`Fehler: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                this.showNotification(`Fehler: ${error.message}`, 'error');
+            }
+        }
     }
 
     addNewWorkflow() {

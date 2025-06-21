@@ -11,6 +11,7 @@ class DataManager {
         // Data stores
         this.decks = new Map();
         this.activeDeckId = null;
+        this.activeAddonDecks = new Set(); // For addon decks (multiple can be active)
         this.settings = {};
         this.pendingEvents = new Map(); // eventId -> { text, reportedBy: [], firstReported, confirmed }
         this.userBingos = new Map(); // bingoId -> bingoData
@@ -66,12 +67,15 @@ class DataManager {
                 }
                 
                 this.activeDeckId = decksData.activeDeckId || null;
+                this.activeAddonDecks = new Set(decksData.activeAddonDecks || []);
                 
                 return { 
                     success: true, 
                     decks: Array.from(this.decks.values()).map(deck => ({
                         ...deck,
-                        isActive: deck.id === this.activeDeckId
+                        isActive: deck.type === 'addon' ? 
+                            this.activeAddonDecks.has(deck.id) : 
+                            deck.id === this.activeDeckId
                     }))
                 };
             } catch (fileError) {
@@ -89,6 +93,7 @@ class DataManager {
         const data = {
             decks: Array.from(this.decks.values()),
             activeDeckId: this.activeDeckId,
+            activeAddonDecks: Array.from(this.activeAddonDecks),
             lastUpdated: new Date().toISOString()
         };
         
@@ -108,6 +113,9 @@ class DataManager {
                 this.activeDeckId = null;
             }
             
+            // Also remove from active addon decks if present
+            this.activeAddonDecks.delete(deckId);
+            
             await this.saveDecksToFile();
             return { success: true };
         } catch (error) {
@@ -122,7 +130,20 @@ class DataManager {
                 return { success: false, error: 'Deck nicht gefunden' };
             }
 
-            this.activeDeckId = deckId;
+            const deck = this.decks.get(deckId);
+            
+            if (deck.type === 'addon') {
+                // For addon decks, toggle their active state
+                if (this.activeAddonDecks.has(deckId)) {
+                    this.activeAddonDecks.delete(deckId);
+                } else {
+                    this.activeAddonDecks.add(deckId);
+                }
+            } else {
+                // For normal decks, only one can be active
+                this.activeDeckId = deckId === this.activeDeckId ? null : deckId;
+            }
+
             await this.saveDecksToFile();
             return { success: true };
         } catch (error) {
@@ -144,6 +165,33 @@ class DataManager {
         } catch (error) {
             console.error('Fehler beim Abrufen des aktiven Decks:', error);
             return { success: false, error: error.message, deck: null };
+        }
+    }
+
+    async getAllActiveDecks() {
+        try {
+            const activeDecks = [];
+            
+            // Add main active deck
+            if (this.activeDeckId && this.decks.has(this.activeDeckId)) {
+                activeDecks.push(this.decks.get(this.activeDeckId));
+            }
+            
+            // Add all active addon decks
+            for (const addonDeckId of this.activeAddonDecks) {
+                if (this.decks.has(addonDeckId)) {
+                    activeDecks.push(this.decks.get(addonDeckId));
+                }
+            }
+            
+            return {
+                success: true,
+                decks: activeDecks,
+                totalEvents: activeDecks.reduce((total, deck) => total + (deck.events?.length || 0), 0)
+            };
+        } catch (error) {
+            console.error('Fehler beim Abrufen der aktiven Decks:', error);
+            return { success: false, error: error.message, decks: [] };
         }
     }
 

@@ -12,14 +12,14 @@
     "setup": "node scripts/setup.js"
   },
   "keywords": [
-    "stream", 
-    "bingo", 
-    "discord", 
-    "obs", 
-    "slash-commands", 
-    "workflow", 
-    "streaming", 
-    "twitch", 
+    "stream",
+    "bingo",
+    "discord",
+    "obs",
+    "slash-commands",
+    "workflow",
+    "streaming",
+    "twitch",
     "youtube"
   ],
   "author": "Streamer",
@@ -30,10 +30,11 @@
     "rimraf": "^5.0.5"
   },
   "dependencies": {
+    "canvas": "^2.11.2",
     "discord.js": "^14.14.1",
     "express": "^4.18.2",
-    "ws": "^8.14.2",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "ws": "^8.14.2"
   },
   "engines": {
     "node": ">=16.0.0",
@@ -47,7 +48,7 @@
     },
     "files": [
       "src/**/*",
-      "assets/**/*", 
+      "assets/**/*",
       "obs/**/*",
       "node_modules/**/*",
       "config.example.json",
@@ -58,7 +59,7 @@
       "icon": "assets/icon.ico"
     },
     "mac": {
-      "target": "dmg", 
+      "target": "dmg",
       "icon": "assets/icon.icns"
     },
     "linux": {

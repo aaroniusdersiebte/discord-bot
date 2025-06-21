@@ -1,16 +1,19 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const BingoPNGGenerator = require('../utils/bingoPNGGenerator');
 
 class DiscordBotV2 {
     constructor(config, dataManager, bingoGenerator) {
         this.config = config;
         this.dataManager = dataManager;
         this.bingoGenerator = bingoGenerator;
+        this.pngGenerator = new BingoPNGGenerator();
         this.client = null;
         this.isReady = false;
         this.userBingos = new Map(); // userId -> bingoData
-        this.eventReactions = new Map(); // messageId -> eventData
+        this.eventMessages = new Map(); // userId -> array of event message IDs
+        this.cardMessages = new Map(); // userId -> bingo card message ID
         this.commands = new Collection();
         
         this.loadCommands();
@@ -46,11 +49,6 @@ class DiscordBotV2 {
 
             this.setupEventHandlers();
             
-            // Register slash commands if enabled
-            if (this.config.getDiscordConfig().enableSlashCommands) {
-                await this.registerSlashCommands();
-            }
-            
             await this.client.login(this.config.get('DISCORD_BOT_TOKEN'));
             console.log('✅ Discord Bot V2 erfolgreich gestartet!');
             
@@ -68,18 +66,23 @@ class DiscordBotV2 {
             
             console.log('🔄 Registriere Slash Commands...');
             
+            // Ensure client is ready and user is available
+            if (!this.client.user) {
+                throw new Error('Client is not ready yet. Cannot register slash commands.');
+            }
+            
             const guildId = this.config.get('DISCORD_GUILD_ID');
             if (guildId) {
                 // Register guild-specific commands (faster for development)
                 await rest.put(
-                    Routes.applicationGuildCommands(this.client.user?.id || 'temp', guildId),
+                    Routes.applicationGuildCommands(this.client.user.id, guildId),
                     { body: commands }
                 );
                 console.log(`✅ ${commands.length} Guild Slash Commands registriert.`);
             } else {
                 // Register global commands
                 await rest.put(
-                    Routes.applicationCommands(this.client.user?.id || 'temp'),
+                    Routes.applicationCommands(this.client.user.id),
                     { body: commands }
                 );
                 console.log(`✅ ${commands.length} Globale Slash Commands registriert.`);
@@ -172,31 +175,33 @@ class DiscordBotV2 {
 
     async handleBingoCommand(interaction, deckId = null) {
         try {
-            await interaction.deferReply();
+            await interaction.deferReply({ ephemeral: true });
 
-            // Get active deck or specified deck
-            let deck;
-            if (deckId) {
-                const deckResponse = await this.dataManager.getDeck(deckId);
-                if (!deckResponse.success) {
-                    const errorMsg = this.config.getBotMessage('errors.deckNotFound') || 
-                                   '❌ Das angegebene Deck wurde nicht gefunden.';
-                    await interaction.editReply(errorMsg);
-                    return;
+            // Get all active decks (main + addon decks)
+            const activeDecksResponse = await this.dataManager.getAllActiveDecks();
+            if (!activeDecksResponse.success || activeDecksResponse.decks.length === 0) {
+                const errorMsg = this.config.getBotMessage('errors.noDeck') || 
+                               '❌ Keine aktiven Bingo Decks! Der Streamer muss erst Decks aktivieren.';
+                await interaction.editReply(errorMsg);
+                return;
+            }
+
+            // Combine all events from active decks
+            const allEvents = [];
+            const activeDecks = activeDecksResponse.decks;
+            activeDecks.forEach(deck => {
+                if (deck.events && deck.events.length > 0) {
+                    allEvents.push(...deck.events);
                 }
-                deck = deckResponse.deck;
-            } else {
-                const activeDeckResponse = await this.dataManager.getActiveDeck();
-                if (!activeDeckResponse.success || !activeDeckResponse.deck) {
-                    const errorMsg = this.config.getBotMessage('errors.noDeck') || 
-                                   '❌ Kein aktives Bingo Deck! Der Streamer muss erst ein Deck aktivieren.';
-                    await interaction.editReply(errorMsg);
-                    return;
-                }
-                deck = activeDeckResponse.deck;
+            });
+
+            if (allEvents.length === 0) {
+                await interaction.editReply('❌ Keine Events in den aktiven Decks gefunden!');
+                return;
             }
 
             const userId = interaction.user.id;
+            const user = interaction.user;
 
             // Check if user already has a bingo card
             if (this.userBingos.has(userId)) {
@@ -208,77 +213,32 @@ class DiscordBotV2 {
 
             // Generate bingo card
             const bingoSize = this.config.get('BOT_SETTINGS.bingoSize') || 5;
-            const bingoCard = this.bingoGenerator.generateCard(deck.events, bingoSize);
+            const bingoCard = this.pngGenerator.generateCard(allEvents, bingoSize);
             
             // Store user's bingo card
             const userBingoData = {
                 userId,
-                username: interaction.user.username,
+                username: user.username,
                 card: bingoCard,
-                deckId: deck.id,
-                deckName: deck.name,
+                activeDecks: activeDecks.map(deck => ({ id: deck.id, name: deck.name })),
                 createdAt: new Date(),
                 checkedItems: new Set(),
+                confirmedItems: new Set(),
                 bingoAchieved: false,
                 winClaimed: false
             };
             
             this.userBingos.set(userId, userBingoData);
 
-            // Create embed with customizable message
-            const messageConfig = this.config.getBotMessage('bingoCardGenerated') || {};
-            const embed = new EmbedBuilder()
-                .setTitle(messageConfig.title || '🎯 Deine Bingo Karte ist bereit!')
-                .setDescription(`**${deck.name}**\\n\\n` + 
-                              (messageConfig.description || 'Reagiere mit ✅ auf Events wenn sie passieren'))
-                .setColor(messageConfig.color || deck.color || '#6366f1')
-                .setTimestamp()
-                .setFooter({ text: `Bingo Karte #${Date.now().toString().slice(-6)}` });
-
-            // Generate card text representation
-            let cardText = '```\\n';
-            for (let row = 0; row < bingoCard.length; row++) {
-                for (let col = 0; col < bingoCard[row].length; col++) {
-                    const event = bingoCard[row][col];
-                    cardText += `${row + 1}.${col + 1}: ${event}\\n`;
-                }
-            }
-            cardText += '```';
-
-            embed.addFields({
-                name: '📋 Deine Bingo Events',
-                value: cardText,
-                inline: false
-            });
-
-            // Generate SVG attachment if possible
-            let attachment = null;
+            // Send DM with bingo card and events
             try {
-                if (this.bingoGenerator.generateImageSVG) {
-                    const svgContent = await this.bingoGenerator.generateImageSVG(bingoCard, {
-                        title: deck.name,
-                        username: interaction.user.username,
-                        color: deck.color || '#6366f1'
-                    });
-                    const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bingo Card</title><style>body{background:#1a1a1a;margin:20px;display:flex;justify-content:center;align-items:center;min-height:90vh;}</style></head><body>${svgContent}</body></html>`;
-                    attachment = new AttachmentBuilder(Buffer.from(htmlContent), { name: 'bingo-card.html' });
-                }
-            } catch (error) {
-                console.log('⚠️ SVG generation failed, using text only:', error.message);
+                await this.sendBingoCardDM(user, userBingoData, bingoCard);
+                await interaction.editReply('✅ Deine Bingo Karte wurde per DM gesendet! 🎯');
+            } catch (dmError) {
+                console.error('❌ Konnte DM nicht senden:', dmError);
+                await interaction.editReply('❌ Ich konnte dir keine DM senden. Bitte überprüfe deine Privatsphäre-Einstellungen und versuche es erneut.');
+                this.userBingos.delete(userId); // Clean up if DM failed
             }
-
-            // Send events as separate messages for reactions
-            if (this.config.get('BOT_SETTINGS.enableEventReactions')) {
-                await this.sendEventMessages(interaction, bingoCard, userId);
-            }
-
-            // Send the main response
-            const response = { embeds: [embed] };
-            if (attachment) {
-                response.files = [attachment];
-            }
-            
-            await interaction.editReply(response);
 
         } catch (error) {
             console.error('❌ Fehler beim Erstellen der Bingo Karte:', error);
@@ -293,33 +253,102 @@ class DiscordBotV2 {
         }
     }
 
-    async sendEventMessages(interaction, bingoCard, userId) {
+    async sendBingoCardDM(user, userBingoData, bingoCard) {
         try {
-            const channel = interaction.channel;
-            if (!channel) return;
+            const { card, activeDecks } = userBingoData;
+            
+            // Generate PNG image
+            const pngBuffer = await this.pngGenerator.generateCardPNG(card, {
+                title: 'Stream Bingo',
+                username: user.username,
+                color: '#6366f1',
+                checkedItems: userBingoData.checkedItems,
+                confirmedEvents: Array.from(userBingoData.confirmedItems)
+            });
 
-            // Send individual event messages with positions
-            for (let row = 0; row < bingoCard.length; row++) {
-                for (let col = 0; col < bingoCard[row].length; col++) {
-                    const event = bingoCard[row][col];
+            // Create main embed
+            const messageConfig = this.config.getBotMessage('bingoCardGenerated') || {};
+            const embed = new EmbedBuilder()
+                .setTitle(messageConfig.title || '🎯 Deine Bingo Karte ist bereit!')
+                .setDescription(
+                    `**Aktive Decks:** ${activeDecks.map(d => d.name).join(', ')}\n\n` +
+                    (messageConfig.description || 'Reagiere mit ✅ auf Events wenn sie passieren!')
+                )
+                .setColor(messageConfig.color || '#6366f1')
+                .setTimestamp()
+                .setFooter({ text: `Bingo Karte #${Date.now().toString().slice(-6)}` });
+
+            // Send the bingo card image or text fallback
+            const fileExtension = this.pngGenerator.canvasAvailable ? 'png' : 'txt';
+            const fileName = `bingo-card.${fileExtension}`;
+            const attachment = new AttachmentBuilder(pngBuffer, { name: fileName });
+            
+            const cardMessage = await user.send({ 
+                embeds: [embed], 
+                files: [attachment] 
+            });
+            
+            // Store card message ID for later updates
+            this.cardMessages.set(user.id, cardMessage.id);
+
+            // Send separator
+            await user.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            await user.send('**📋 Deine Bingo Events** - Reagiere mit ✅ wenn ein Event passiert:');
+
+            // Send each event as individual message
+            const eventMessageIds = [];
+            const flatEvents = [];
+            
+            for (let row = 0; row < card.length; row++) {
+                for (let col = 0; col < card[row].length; col++) {
+                    const event = card[row][col];
                     if (event === 'FREE') continue; // Skip FREE space
                     
                     const position = `${row + 1}.${col + 1}`;
-                    
-                    const eventMessage = await channel.send(`**${position}** ${event}`);
-                    await eventMessage.react('✅');
-                    
-                    // Store reaction mapping
-                    this.eventReactions.set(eventMessage.id, {
-                        userId,
-                        position: { row, col },
-                        event,
-                        messageId: eventMessage.id
-                    });
+                    flatEvents.push({ event, position, row, col });
                 }
             }
+
+            // Send events in groups of 5 to avoid spam
+            for (let i = 0; i < flatEvents.length; i += 5) {
+                const eventGroup = flatEvents.slice(i, i + 5);
+                
+                for (const { event, position } of eventGroup) {
+                    const eventMessage = await user.send(`**${position}** ${event}`);
+                    await eventMessage.react('✅');
+                    eventMessageIds.push(eventMessage.id);
+                    
+                    // Small delay to avoid rate limits
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                
+                // Longer delay between groups
+                if (i + 5 < flatEvents.length) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+            
+            // Store event message IDs
+            this.eventMessages.set(user.id, eventMessageIds);
+
+            // Send instructions
+            await user.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            const instructionsEmbed = new EmbedBuilder()
+                .setTitle('🎮 Anleitung')
+                .setDescription(
+                    '1️⃣ **Event passiert?** → Reagiere mit ✅ auf die entsprechende Nachricht\n' +
+                    '2️⃣ **Bingo erreicht?** → Verwende `/win <platform> <username>`\n' +
+                    '3️⃣ **Status prüfen?** → Verwende `/status`\n\n' +
+                    '🎯 **Ziel:** Erreiche eine vollständige Reihe, Spalte oder Diagonale!'
+                )
+                .setColor('#22c55e')
+                .setFooter({ text: 'Viel Erfolg beim Bingo! 🍀' });
+            
+            await user.send({ embeds: [instructionsEmbed] });
+
         } catch (error) {
-            console.error('⚠️ Error sending event messages:', error);
+            console.error('❌ Fehler beim Senden der Bingo Karte DM:', error);
+            throw error;
         }
     }
 
@@ -398,23 +427,36 @@ class DiscordBotV2 {
                 await reaction.fetch();
             }
 
-            // Check if reaction is on a bingo event message
-            const eventData = this.eventReactions.get(reaction.message.id);
-            if (!eventData || eventData.userId !== user.id) {
-                return;
-            }
-
             // Only handle green checkmark reactions
             if (reaction.emoji.name !== '✅') {
                 return;
             }
 
-            const userBingo = this.userBingos.get(user.id);
+            // Check if this is from a user's event messages
+            const userId = user.id;
+            const userBingo = this.userBingos.get(userId);
             if (!userBingo) {
                 return;
             }
 
-            const positionKey = `${eventData.position.row}-${eventData.position.col}`;
+            const eventMessageIds = this.eventMessages.get(userId);
+            if (!eventMessageIds || !eventMessageIds.includes(reaction.message.id)) {
+                return;
+            }
+
+            // Find which event this reaction corresponds to
+            const messageText = reaction.message.content;
+            const positionMatch = messageText.match(/\*\*(\d+\.\d+)\*\*/);
+            if (!positionMatch) {
+                return;
+            }
+
+            const [, positionStr] = positionMatch;
+            const [rowStr, colStr] = positionStr.split('.');
+            const row = parseInt(rowStr) - 1;
+            const col = parseInt(colStr) - 1;
+            const positionKey = `${row}-${col}`;
+            const eventText = messageText.replace(/\*\*\d+\.\d+\*\*\s/, '').trim();
 
             if (added) {
                 // User marked an event as happened
@@ -422,7 +464,7 @@ class DiscordBotV2 {
                 
                 // Report event to data manager for streamer confirmation
                 await this.dataManager.reportEvent({
-                    eventText: eventData.event,
+                    eventText: eventText,
                     reportedBy: {
                         userId: user.id,
                         username: user.username
@@ -430,10 +472,17 @@ class DiscordBotV2 {
                     timestamp: new Date()
                 });
 
+                // Send confirmation DM
+                await user.send(`⏳ Event **"${eventText}"** gemeldet und wartet auf Bestätigung durch den Streamer.`);
+
             } else {
                 // User unmarked an event
                 userBingo.checkedItems.delete(positionKey);
+                await user.send(`❌ Event **"${eventText}"** wurde abgewählt.`);
             }
+
+            // Update the bingo card PNG
+            await this.updateBingoCardPNG(user, userBingo);
 
             // Check for bingo
             const hasBingo = this.checkForBingo(userBingo);
@@ -446,6 +495,65 @@ class DiscordBotV2 {
 
         } catch (error) {
             console.error('❌ Fehler beim Verarbeiten der Reaktion:', error);
+        }
+    }
+
+    async updateBingoCardPNG(user, userBingo) {
+        try {
+            // Generate updated PNG
+            const pngBuffer = await this.pngGenerator.generateQuickUpdatePNG(userBingo.card, {
+                title: 'Stream Bingo',
+                username: user.username,
+                color: '#6366f1',
+                checkedItems: userBingo.checkedItems,
+                confirmedEvents: Array.from(userBingo.confirmedItems)
+            });
+
+            // Get the original card message
+            const cardMessageId = this.cardMessages.get(user.id);
+            if (!cardMessageId) {
+                return; // No original message to update
+            }
+
+            try {
+                // Try to get the message from DM channel
+                const dmChannel = await user.createDM();
+                const cardMessage = await dmChannel.messages.fetch(cardMessageId);
+                
+                // Create updated embed
+                const originalEmbed = cardMessage.embeds[0];
+                const updatedEmbed = new EmbedBuilder()
+                    .setTitle(originalEmbed.title)
+                    .setDescription(originalEmbed.description + `\n\n🔄 *Aktualisiert: ${new Date().toLocaleTimeString('de-DE')}*`)
+                    .setColor(originalEmbed.color)
+                    .setFooter(originalEmbed.footer)
+                    .setTimestamp();
+
+                // Update with new PNG or text
+                const fileExtension = this.pngGenerator.canvasAvailable ? 'png' : 'txt';
+                const fileName = `bingo-card-updated.${fileExtension}`;
+                const attachment = new AttachmentBuilder(pngBuffer, { name: fileName });
+                await cardMessage.edit({ 
+                    embeds: [updatedEmbed], 
+                    files: [attachment] 
+                });
+
+            } catch (editError) {
+                console.log('⚠️ Konnte Bingo Karte nicht bearbeiten, sende neue:', editError.message);
+                
+                // If editing fails, send a new updated card
+                const attachment = new AttachmentBuilder(pngBuffer, { name: 'bingo-card-updated.png' });
+                const newMessage = await user.send({ 
+                    content: '🔄 **Aktualisierte Bingo Karte:**',
+                    files: [attachment] 
+                });
+                
+                // Update stored message ID
+                this.cardMessages.set(user.id, newMessage.id);
+            }
+
+        } catch (error) {
+            console.error('❌ Fehler beim Aktualisieren der Bingo Karte:', error);
         }
     }
 
@@ -560,21 +668,51 @@ class DiscordBotV2 {
     }
 
     async processEventConfirmation(eventData) {
-        // Update all users who have this event checked
+        // Update all users who have this event in their cards
         try {
             const messageConfig = this.config.getBotMessage('eventConfirmed') || {};
             
             for (const [userId, userBingo] of this.userBingos.entries()) {
-                // Find the event in their card and notify the user
-                const user = await this.client.users.fetch(userId);
-                if (user && this.config.get('BOT_SETTINGS.enableDMNotifications')) {
-                    const embed = new EmbedBuilder()
-                        .setTitle(messageConfig.title || '✅ Event bestätigt')
-                        .setDescription(`Event wurde vom Streamer bestätigt: **${eventData.eventText || eventData.text}**`)
-                        .setColor(messageConfig.color || '#22c55e')
-                        .setTimestamp();
+                // Check if this event is in their card
+                const { card } = userBingo;
+                let eventFound = false;
+                
+                for (let row = 0; row < card.length; row++) {
+                    for (let col = 0; col < card[row].length; col++) {
+                        if (card[row][col] === eventData.eventText || card[row][col] === eventData.text) {
+                            userBingo.confirmedItems.add(card[row][col]);
+                            eventFound = true;
+                        }
+                    }
+                }
+                
+                if (eventFound) {
+                    try {
+                        const user = await this.client.users.fetch(userId);
+                        
+                        // Update the bingo card PNG
+                        await this.updateBingoCardPNG(user, userBingo);
+                        
+                        // Send confirmation message
+                        const embed = new EmbedBuilder()
+                            .setTitle(messageConfig.title || '✅ Event bestätigt')
+                            .setDescription(`Event wurde vom Streamer bestätigt: **${eventData.eventText || eventData.text}**`)
+                            .setColor(messageConfig.color || '#22c55e')
+                            .setTimestamp();
 
-                    await user.send({ embeds: [embed] });
+                        await user.send({ embeds: [embed] });
+                        
+                        // Check for new bingo after confirmation
+                        const hasBingo = this.checkForBingo(userBingo);
+                        if (hasBingo && !userBingo.bingoAchieved) {
+                            userBingo.bingoAchieved = true;
+                            userBingo.bingoAchievedAt = new Date();
+                            await this.notifyBingoAchieved(user, userBingo);
+                        }
+                        
+                    } catch (userError) {
+                        console.error(`❌ Konnte User ${userId} nicht benachrichtigen:`, userError);
+                    }
                 }
             }
         } catch (error) {

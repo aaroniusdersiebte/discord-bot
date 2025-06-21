@@ -6,7 +6,7 @@ const fs = require('fs');
 const ConfigManager = require('../config/configManager');
 const DiscordBotV2 = require('../bot/discordBotV2');
 const DataManager = require('../data/dataManager');
-const BingoGenerator = require('../utils/bingoGeneratorSVG');
+const BingoPNGGenerator = require('../utils/bingoPNGGenerator');
 const OBSServer = require('../utils/obsServer');
 
 class StreamBingoAppV2 {
@@ -15,7 +15,7 @@ class StreamBingoAppV2 {
         this.configManager = new ConfigManager();
         this.discordBot = null;
         this.dataManager = new DataManager();
-        this.bingoGenerator = new BingoGenerator();
+        this.bingoGenerator = new BingoPNGGenerator();
         this.obsServer = new OBSServer();
         this.isDev = process.argv.includes('--dev');
         
@@ -203,6 +203,10 @@ class StreamBingoAppV2 {
 
         ipcMain.handle('get-deck', async (event, deckId) => {
             return await this.dataManager.getDeck(deckId);
+        });
+
+        ipcMain.handle('get-all-active-decks', async () => {
+            return await this.dataManager.getAllActiveDecks();
         });
 
         // Enhanced Event Management
